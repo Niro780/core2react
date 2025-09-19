@@ -31,7 +31,9 @@ $salesData = json_encode([500, 700, 400, 900, 650, 1200, 800]);
     
     @media (max-width: 991px) {
       .main-content {
+         padding: 20px;
         margin-left: 0;
+        margin-top: 100px;
         padding: 15px;
       }
     }

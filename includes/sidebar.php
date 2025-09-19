@@ -28,9 +28,9 @@ $currentPage = basename($_SERVER['PHP_SELF']);
           </div>
           <div class="flex-grow-1">
             <h6 class="mb-0 text-white fw-semibold">
-              <?php echo isset($_SESSION['username']) ? $_SESSION['username'] : 'Admin User'; ?>
+              <?php echo isset($_SESSION['name']) ? $_SESSION['name'] : ''; ?>
             </h6>
-            <small class="text-white-50">Administrator</small>
+            <small class="text-white-50"> <?php echo isset($_SESSION['role']) ? $_SESSION['role'] : '$role'; ?></small>
           </div>
           <div class="dropdown">
             <button class="btn btn-sm btn-outline-light btn-ghost" type="button" data-bs-toggle="dropdown">
@@ -51,8 +51,8 @@ $currentPage = basename($_SERVER['PHP_SELF']);
     <ul class="nav flex-column p-0">
       <!-- Dashboard -->
       <li class="nav-item mb-1">
-        <a class="nav-link modern-nav-link <?php echo ($currentPage == 'dashboard.php' || $currentPage == 'index.php') ? 'active' : ''; ?>" 
-           href="dashboard.php">
+        <a class="nav-link modern-nav-link <?php echo ($currentPage == 'homes.php' || $currentPage == 'index.php') ? 'active' : ''; ?>" 
+           href="homes.php">
           <div class="nav-icon">
             <i class="bi bi-house-door"></i>
           </div>
@@ -60,36 +60,14 @@ $currentPage = basename($_SERVER['PHP_SELF']);
         </a>
       </li>
       
-      <!-- Products Section -->
       <li class="nav-item mb-1">
-        <a class="nav-link modern-nav-link <?php echo in_array($currentPage, ['products.php', 'add-product.php', 'categories.php']) ? 'active' : ''; ?>" 
-           href="#productsSubmenu" data-bs-toggle="collapse" role="button" aria-expanded="<?php echo in_array($currentPage, ['products.php', 'add-product.php', 'categories.php']) ? 'true' : 'false'; ?>">
+        <a class="nav-link modern-nav-link <?php echo $currentPage == 'Product.php' ? 'active' : ''; ?>" 
+           href="product.php">
           <div class="nav-icon">
-            <i class="bi bi-box-seam"></i>
+            <i class="bi bi-people"></i>
           </div>
-          <span>Products</span>
-          <i class="bi bi-chevron-down ms-auto collapse-icon"></i>
+          <span>Product</span>
         </a>
-        <div class="collapse <?php echo in_array($currentPage, ['products.php', 'add-product.php', 'categories.php']) ? 'show' : ''; ?>" 
-             id="productsSubmenu">
-          <ul class="nav flex-column submenu">
-            <li class="nav-item">
-              <a class="nav-link submenu-link <?php echo $currentPage == 'products.php' ? 'active' : ''; ?>" href="products.php">
-                <i class="bi bi-list-ul me-2"></i>All Products
-              </a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link submenu-link <?php echo $currentPage == 'add-product.php' ? 'active' : ''; ?>" href="add-product.php">
-                <i class="bi bi-plus-circle me-2"></i>Add Product
-              </a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link submenu-link <?php echo $currentPage == 'categories.php' ? 'active' : ''; ?>" href="categories.php">
-                <i class="bi bi-tags me-2"></i>Categories
-              </a>
-            </li>
-          </ul>
-        </div>
       </li>
       
       <!-- Orders -->
@@ -100,58 +78,11 @@ $currentPage = basename($_SERVER['PHP_SELF']);
             <i class="bi bi-cart3"></i>
           </div>
           <span>Orders</span>
-          <span class="badge bg-warning text-dark ms-auto pulse-badge">5</span>
+         
         </a>
       </li>
       
-      <!-- Customers -->
-      <li class="nav-item mb-1">
-        <a class="nav-link modern-nav-link <?php echo $currentPage == 'customers.php' ? 'active' : ''; ?>" 
-           href="customers.php">
-          <div class="nav-icon">
-            <i class="bi bi-people"></i>
-          </div>
-          <span>Customers</span>
-        </a>
-      </li>
-      
-      <!-- Reports Section -->
-      <li class="nav-item mb-1">
-        <a class="nav-link modern-nav-link <?php echo in_array($currentPage, ['sales-report.php', 'inventory-report.php']) ? 'active' : ''; ?>" 
-           href="#reportsSubmenu" data-bs-toggle="collapse" role="button" aria-expanded="<?php echo in_array($currentPage, ['sales-report.php', 'inventory-report.php']) ? 'true' : 'false'; ?>">
-          <div class="nav-icon">
-            <i class="bi bi-graph-up-arrow"></i>
-          </div>
-          <span>Reports</span>
-          <i class="bi bi-chevron-down ms-auto collapse-icon"></i>
-        </a>
-        <div class="collapse <?php echo in_array($currentPage, ['sales-report.php', 'inventory-report.php']) ? 'show' : ''; ?>" 
-             id="reportsSubmenu">
-          <ul class="nav flex-column submenu">
-            <li class="nav-item">
-              <a class="nav-link submenu-link <?php echo $currentPage == 'sales-report.php' ? 'active' : ''; ?>" href="sales-report.php">
-                <i class="bi bi-currency-dollar me-2"></i>Sales Report
-              </a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link submenu-link <?php echo $currentPage == 'inventory-report.php' ? 'active' : ''; ?>" href="inventory-report.php">
-                <i class="bi bi-boxes me-2"></i>Inventory Report
-              </a>
-            </li>
-          </ul>
-        </div>
-      </li>
-      
-      <!-- Analytics -->
-      <li class="nav-item mb-1">
-        <a class="nav-link modern-nav-link <?php echo $currentPage == 'analytics.php' ? 'active' : ''; ?>" 
-           href="analytics.php">
-          <div class="nav-icon">
-            <i class="bi bi-bar-chart"></i>
-          </div>
-          <span>Analytics</span>
-        </a>
-      </li>
+
       
       <!-- Divider -->
       <li><hr class="sidebar-divider my-4"></li>
@@ -185,42 +116,9 @@ $currentPage = basename($_SERVER['PHP_SELF']);
     </ul>
   </nav>
   
-  <!-- Quick Actions -->
-  <div class="quick-actions mx-3 mt-4">
-    <div class="card bg-white bg-opacity-10 backdrop-blur border-0 shadow-sm">
-      <div class="card-body p-3">
-        <h6 class="card-title text-white mb-3 fw-semibold">
-          <i class="bi bi-lightning me-2"></i>Quick Actions
-        </h6>
-        <div class="d-grid gap-2">
-          <button class="btn btn-light btn-sm fw-medium" onclick="location.href='add-product.php'">
-            <i class="bi bi-plus me-2"></i>Add Product
-          </button>
-          <button class="btn btn-outline-light btn-sm fw-medium" onclick="location.href='orders.php'">
-            <i class="bi bi-eye me-2"></i>View Orders
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
   
   <!-- Sidebar Footer -->
-  <div class="sidebar-footer mt-4 p-4 border-top border-light-subtle">
-    <div class="d-flex justify-content-between align-items-center">
-      <small class="text-white-50 fw-medium">Version 2.1.0</small>
-      <div class="dropdown">
-        <button class="btn btn-sm btn-outline-light btn-ghost" type="button" data-bs-toggle="dropdown">
-          <i class="bi bi-three-dots"></i>
-        </button>
-        <ul class="dropdown-menu dropdown-menu-end shadow border-0">
-          <li><a class="dropdown-item" href="help.php"><i class="bi bi-question-circle me-2"></i>Help Center</a></li>
-          <li><a class="dropdown-item" href="about.php"><i class="bi bi-info-circle me-2"></i>About</a></li>
-          <li><hr class="dropdown-divider"></li>
-          <li><a class="dropdown-item text-danger" href="logout.php"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
-        </ul>
-      </div>
-    </div>
-  </div>
+  
 </div>
 
 <!-- Mobile Sidebar Overlay -->
