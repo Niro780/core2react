@@ -2,6 +2,26 @@
 session_start();
 require_once "config.php";
 
+// Session timeout duration (30 minutes)
+define('SESSION_TIMEOUT', 1800);
+
+// Check if user is already logged in
+if (isset($_SESSION['user_id'])) {
+    // Check if session has timed out
+    if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > SESSION_TIMEOUT)) {
+        // Session expired
+        session_unset();
+        session_destroy();
+        header("Location: login.php?timeout=1");
+        exit();
+    } else {
+        // Update last activity
+        $_SESSION['last_activity'] = time();
+        header("Location: homes.php");
+        exit();
+    }
+}
+
 // Generate CSRF token once per session
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
@@ -12,7 +32,8 @@ $error = '';
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     // CSRF check
     if (!isset($_POST["csrf_token"]) || $_POST["csrf_token"] !== $_SESSION["csrf_token"]) {
-        die("❌ CSRF validation failed.");
+        header("Location: login.php");
+        exit();
     }
 
     $email = trim($_POST["email"]);
@@ -23,20 +44,17 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     } else {
         try {
             $pdo = getDBConnection();
-            $stmt = $pdo->prepare("SELECT id, name, email, password, role FROM users WHERE email = ?");
+            $stmt = $pdo->prepare("SELECT id, name, email, password FROM sellers WHERE email = ?");
             $stmt->execute([$email]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if ($user && password_verify($password, $user['password'])) {
-                // ✅ Save user session
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['name']    = $user['name'];
-                $_SESSION['role']    = $user['role'];
-
-                // ✅ If seller, also set seller_id
-                if ($user['role'] === 'seller') {
-                    $_SESSION['seller_id'] = $user['id'];
-                }
+                // Save user session
+                $_SESSION['user_id']     = $user['id'];
+                $_SESSION['name']        = $user['name'];
+                $_SESSION['role']        = 'seller';
+                $_SESSION['seller_id']   = $user['id'];
+                $_SESSION['last_activity'] = time(); // Start session timer
 
                 header("Location: homes.php");
                 exit();
@@ -65,6 +83,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
                 <?php if ($error): ?>
                     <div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div>
+                <?php endif; ?>
+
+                <?php if(isset($_GET['timeout'])): ?>
+                    <div class="alert alert-warning">Your session has expired due to inactivity. Please log in again.</div>
                 <?php endif; ?>
 
                 <form method="POST">

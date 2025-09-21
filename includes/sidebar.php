@@ -1,442 +1,239 @@
 <?php
-// Get current page name to highlight active menu
+session_start();
+
+// Ensure only sellers can access
+if (!isset($_SESSION['seller_id'])) {
+    header("Location: login.php");
+    exit;
+}
+
+// Get current page to highlight active menu
 $currentPage = basename($_SERVER['PHP_SELF']);
 ?>
 
-<!-- Enhanced Sidebar with Blue Theme -->
-<div class="sidebar bg-gradient-blue text-white position-fixed" id="sidebar" style="width: 270px; height: 100vh; top: 0; left: 0; overflow-y: auto; z-index: 1030;">
+<!-- Seller Sidebar -->
+<div class="sidebar bg-gradient-to-br from-blue-600 via-purple-600 to-blue-800 text-white fixed top-0 left-0 w-64 h-screen overflow-y-auto z-40 transform -translate-x-full lg:translate-x-0 transition-transform duration-300 ease-in-out" id="sidebar">
+  
   <!-- Sidebar Header -->
-  <div class="sidebar-header p-4 border-bottom border-light-subtle">
-    <div class="d-flex align-items-center">
-      <div class="logo-container bg-white bg-opacity-15 backdrop-blur rounded-3 d-flex align-items-center justify-content-center me-3 shadow-sm" style="width:45px; height:45px;">
-        <i class="bi bi-speedometer2 text-white fs-5"></i>
+  <div class="p-4 border-b border-white border-opacity-20">
+    <div class="flex items-center">
+      <div class="w-11 h-11 bg-white bg-opacity-15 backdrop-blur rounded-2xl flex items-center justify-center mr-3 shadow-sm">
+        <i class="bi bi-speedometer2 text-white text-xl"></i>
       </div>
       <div>
-        <h5 class="mb-1 fw-bold text-white">iMARKET</h5>
-     
+        <h5 class="mb-1 font-bold text-white text-lg">iMARKET</h5>
       </div>
     </div>
   </div>
 
-  <!-- User Profile Card -->
-  <div class="user-profile-card mx-3 mt-3 mb-4">
-    <div class="card bg-white bg-opacity-10 backdrop-blur border-0 shadow-sm">
-      <div class="card-body p-3">
-        <div class="d-flex align-items-center">
-          <div class="user-avatar bg-white bg-opacity-20 rounded-circle d-flex align-items-center justify-content-center me-3 shadow-sm" style="width:40px; height:40px;">
+  <!-- Seller Profile Card -->
+  <div class="mx-3 mt-3 mb-4">
+    <div class="bg-white bg-opacity-10 backdrop-blur border-0 rounded-lg shadow-sm">
+      <div class="p-3">
+        <div class="flex items-center">
+          <div class="w-10 h-10 bg-white bg-opacity-20 rounded-full flex items-center justify-center mr-3 shadow-sm">
             <i class="bi bi-person-fill text-white"></i>
           </div>
-          <div class="flex-grow-1">
-            <h6 class="mb-0 text-white fw-semibold">
-              <?php echo isset($_SESSION['name']) ? $_SESSION['name'] : ''; ?>
+          <div class="flex-grow">
+            <h6 class="mb-0 text-white font-semibold">
+              <?= htmlspecialchars($_SESSION['name'] ?? 'Seller Name'); ?>
             </h6>
-            <small class="text-white-50"> <?php echo isset($_SESSION['role']) ? $_SESSION['role'] : '$role'; ?></small>
+            <small class="text-white text-opacity-70">Seller</small>
           </div>
-          <div class="dropdown">
-            <button class="btn btn-sm btn-outline-light btn-ghost" type="button" data-bs-toggle="dropdown">
+          <div class="relative">
+            <button class="text-white hover:bg-white hover:bg-opacity-20 p-1 rounded transition-colors duration-200 dropdown-toggle" type="button" onclick="toggleDropdown()">
               <i class="bi bi-three-dots-vertical"></i>
             </button>
-            <ul class="dropdown-menu dropdown-menu-end shadow border-0">
-              <li><a class="dropdown-item" href="profile.php"><i class="bi bi-person me-2"></i>Profile</a></li>
-              <li><a class="dropdown-item" href="preferences.php"><i class="bi bi-sliders me-2"></i>Preferences</a></li>
-            </ul>
+            <div class="dropdown-menu absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border-0 py-1 hidden z-50" id="profileDropdown">
+              <a class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200" href="profile.php">
+                <i class="bi bi-person mr-2"></i>Profile
+              </a>
+              <a class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200" href="preferences.php">
+                <i class="bi bi-sliders mr-2"></i>Preferences
+              </a>
+              <a class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200" href="logout.php">
+                <i class="bi bi-box-arrow-right mr-2"></i>Logout
+              </a>
+            </div>
           </div>
         </div>
       </div>
     </div>
   </div>
-  
+
   <!-- Navigation Menu -->
-  <nav class="sidebar-nav px-3">
-    <ul class="nav flex-column p-0">
+  <nav class="px-3">
+    <ul class="space-y-1">
+      
       <!-- Dashboard -->
-      <li class="nav-item mb-1">
-        <a class="nav-link modern-nav-link <?php echo ($currentPage == 'homes.php' || $currentPage == 'index.php') ? 'active' : ''; ?>" 
+      <li>
+        <a class="modern-nav-link flex items-center px-4 py-3 rounded-lg transition-all duration-200 hover:bg-white hover:bg-opacity-10 hover:transform hover:scale-105 relative overflow-hidden <?= ($currentPage == 'homes.php' || $currentPage == 'index.php') ? 'bg-white bg-opacity-20 shadow-lg' : ''; ?>" 
            href="homes.php">
-          <div class="nav-icon">
+          <div class="w-5 h-5 flex items-center justify-center mr-3">
             <i class="bi bi-house-door"></i>
           </div>
           <span>Dashboard</span>
+          <?php if ($currentPage == 'homes.php' || $currentPage == 'index.php'): ?>
+            <div class="absolute right-2 w-1 h-6 bg-white rounded-full"></div>
+          <?php endif; ?>
         </a>
       </li>
-      
-      <li class="nav-item mb-1">
-        <a class="nav-link modern-nav-link <?php echo $currentPage == 'Product.php' ? 'active' : ''; ?>" 
+
+      <!-- Products -->
+      <li>
+        <a class="modern-nav-link flex items-center px-4 py-3 rounded-lg transition-all duration-200 hover:bg-white hover:bg-opacity-10 hover:transform hover:scale-105 relative overflow-hidden <?= ($currentPage == 'product.php') ? 'bg-white bg-opacity-20 shadow-lg' : ''; ?>" 
            href="product.php">
-          <div class="nav-icon">
-            <i class="bi bi-people"></i>
+          <div class="w-5 h-5 flex items-center justify-center mr-3">
+            <i class="bi bi-box-seam"></i>
           </div>
-          <span>Product</span>
+          <span>Products</span>
+          <?php if ($currentPage == 'product.php'): ?>
+            <div class="absolute right-2 w-1 h-6 bg-white rounded-full"></div>
+          <?php endif; ?>
         </a>
       </li>
-      
+
       <!-- Orders -->
-      <li class="nav-item mb-1">
-        <a class="nav-link modern-nav-link d-flex align-items-center <?php echo in_array($currentPage, ['orders.php', 'order-details.php']) ? 'active' : ''; ?>" 
+      <li>
+        <a class="modern-nav-link flex items-center px-4 py-3 rounded-lg transition-all duration-200 hover:bg-white hover:bg-opacity-10 hover:transform hover:scale-105 relative overflow-hidden <?= in_array($currentPage, ['orders.php', 'order-details.php']) ? 'bg-white bg-opacity-20 shadow-lg' : ''; ?>" 
            href="orders.php">
-          <div class="nav-icon">
+          <div class="w-5 h-5 flex items-center justify-center mr-3">
             <i class="bi bi-cart3"></i>
           </div>
           <span>Orders</span>
-         
+          <?php if (in_array($currentPage, ['orders.php', 'order-details.php'])): ?>
+            <div class="absolute right-2 w-1 h-6 bg-white rounded-full"></div>
+          <?php endif; ?>
         </a>
       </li>
-      
 
-      
-      <!-- Divider -->
-      <li><hr class="sidebar-divider my-4"></li>
-      
-      <!-- Management Section -->
-      <li class="nav-item mb-1">
-        <small class="text-white-50 fw-semibold text-uppercase px-3 mb-2 d-block" style="font-size: 0.75rem; letter-spacing: 0.5px;">Management</small>
+      <!-- Returns/Refunds -->
+      <li>
+        <a class="modern-nav-link flex items-center px-4 py-3 rounded-lg transition-all duration-200 hover:bg-white hover:bg-opacity-10 hover:transform hover:scale-105 relative overflow-hidden <?= ($currentPage == 'return.php') ? 'bg-white bg-opacity-20 shadow-lg' : ''; ?>" 
+           href="return.php">
+          <div class="w-5 h-5 flex items-center justify-center mr-3">
+            <i class="bi bi-arrow-counterclockwise"></i>
+          </div>
+          <span>Return/Refund</span>
+          <?php if ($currentPage == 'return.php'): ?>
+            <div class="absolute right-2 w-1 h-6 bg-white rounded-full"></div>
+          <?php endif; ?>
+        </a>
       </li>
-      
+
+      <!-- Divider -->
+      <li>
+        <hr class="my-4 border-white border-opacity-20">
+      </li>
+
       <!-- Settings -->
-      <li class="nav-item mb-1">
-        <a class="nav-link modern-nav-link <?php echo $currentPage == 'settings.php' ? 'active' : ''; ?>" 
+      <li>
+        <a class="modern-nav-link flex items-center px-4 py-3 rounded-lg transition-all duration-200 hover:bg-white hover:bg-opacity-10 hover:transform hover:scale-105 relative overflow-hidden <?= ($currentPage == 'settings.php') ? 'bg-white bg-opacity-20 shadow-lg' : ''; ?>" 
            href="settings.php">
-          <div class="nav-icon">
+          <div class="w-5 h-5 flex items-center justify-center mr-3">
             <i class="bi bi-gear"></i>
           </div>
           <span>Settings</span>
+          <?php if ($currentPage == 'settings.php'): ?>
+            <div class="absolute right-2 w-1 h-6 bg-white rounded-full"></div>
+          <?php endif; ?>
         </a>
       </li>
-      
-      <!-- Users Management -->
-      <li class="nav-item mb-1">
-        <a class="nav-link modern-nav-link <?php echo $currentPage == 'users.php' ? 'active' : ''; ?>" 
-           href="users.php">
-          <div class="nav-icon">
-            <i class="bi bi-person-gear"></i>
-          </div>
-          <span>Users</span>
-        </a>
-      </li>
+
     </ul>
   </nav>
-  
-  
-  <!-- Sidebar Footer -->
-  
 </div>
 
 <!-- Mobile Sidebar Overlay -->
-<div class="sidebar-overlay d-lg-none" id="sidebarOverlay" style="display: none;"></div>
+<div class="sidebar-overlay fixed inset-0 bg-black bg-opacity-50 z-30 hidden lg:hidden" id="sidebarOverlay"></div>
+
+<!-- Mobile Menu Button (add this to your navbar) -->
+<button class="lg:hidden fixed top-4 left-4 z-50 p-2 bg-blue-600 text-white rounded-lg shadow-lg" onclick="toggleSidebar()" id="sidebarToggle">
+  <i class="bi bi-list text-xl"></i>
+</button>
 
 <style>
-/* Blue Gradient Background */
-.bg-gradient-blue {
-  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 50%, #60a5fa 100%);
-  position: relative;
+@keyframes ripple { 
+  to { 
+    transform: scale(4); 
+    opacity: 0; 
+  } 
 }
 
-.bg-gradient-blue::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(135deg, rgba(30, 64, 175, 0.9) 0%, rgba(59, 130, 246, 0.8) 100%);
-  z-index: -1;
-}
-
-/* Backdrop Blur Effect */
-.backdrop-blur {
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-
-/* Sidebar Styles */
-.sidebar {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 2px 0 20px rgba(0, 0, 0, 0.1);
-}
-
-/* Enhanced Navigation Links */
-.modern-nav-link {
-  color: rgba(255, 255, 255, 0.9) !important;
-  padding: 0.875rem 1rem !important;
-  border-radius: 12px !important;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  border: none !important;
-  display: flex !important;
-  align-items: center !important;
-  text-decoration: none !important;
-  position: relative !important;
-  overflow: hidden !important;
-  margin-bottom: 0.25rem !important;
-}
-
-.modern-nav-link::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 0;
-  height: 100%;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
-  transition: width 0.3s ease;
-  z-index: 0;
-}
-
-.modern-nav-link:hover::before {
-  width: 100%;
-}
-
-.modern-nav-link:hover {
-  color: white !important;
-  background: rgba(255, 255, 255, 0.15) !important;
-  transform: translateX(5px) !important;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1) !important;
-}
-
-.modern-nav-link.active {
-  color: white !important;
-  background: rgba(255, 255, 255, 0.2) !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
-  border-left: 4px solid rgba(255, 255, 255, 0.8) !important;
-}
-
-/* Navigation Icons */
-.nav-icon {
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 0.75rem;
-  position: relative;
-  z-index: 1;
-}
-
-.nav-icon i {
-  font-size: 1.1rem;
-}
-
-/* Collapse Icon Animation */
-.collapse-icon {
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  z-index: 1;
-}
-
-.modern-nav-link[aria-expanded="true"] .collapse-icon {
-  transform: rotate(180deg);
-}
-
-/* Submenu Styles */
-.submenu {
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
-  margin: 0.5rem 0;
-  padding: 0.5rem 0;
-}
-
-.submenu-link {
-  color: rgba(255, 255, 255, 0.8) !important;
-  padding: 0.625rem 1.5rem !important;
-  font-size: 0.9rem !important;
-  border-radius: 8px !important;
-  transition: all 0.2s ease !important;
-  margin: 0.125rem 0.5rem !important;
-}
-
-.submenu-link:hover {
-  color: white !important;
-  background: rgba(255, 255, 255, 0.1) !important;
-  transform: translateX(3px) !important;
-}
-
-.submenu-link.active {
-  color: white !important;
-  background: rgba(255, 255, 255, 0.15) !important;
-  border-left: 3px solid rgba(255, 255, 255, 0.8) !important;
-}
-
-/* Enhanced Badge */
-.pulse-badge {
-  animation: pulse 2s infinite;
-  font-size: 0.7rem !important;
-  font-weight: 600 !important;
-  padding: 0.25rem 0.5rem !important;
-  border-radius: 10px !important;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2) !important;
-}
-
-@keyframes pulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-  100% { transform: scale(1); }
-}
-
-/* Sidebar Divider */
-.sidebar-divider {
-  border-top: 1px solid rgba(255, 255, 255, 0.2) !important;
-  margin: 1rem 1.5rem !important;
-  opacity: 0.6;
-}
-
-/* Enhanced Buttons */
-.btn-ghost {
-  background: transparent !important;
-  border: 1px solid rgba(255, 255, 255, 0.3) !important;
-  transition: all 0.2s ease !important;
-}
-
-.btn-ghost:hover {
-  background: rgba(255, 255, 255, 0.1) !important;
-  border-color: rgba(255, 255, 255, 0.5) !important;
-  transform: translateY(-1px) !important;
-}
-
-/* Cards Enhancement */
-.card {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-}
-
-.card:hover {
-  transform: translateY(-2px) !important;
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15) !important;
-}
-
-/* Mobile responsiveness */
-@media (max-width: 991px) {
-  .sidebar {
-    transform: translateX(-100%);
-  }
-  
-  .sidebar.show {
-    transform: translateX(0);
-  }
-  
-  .sidebar-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.6);
-    z-index: 1025;
-    backdrop-filter: blur(2px);
-  }
-}
-
-/* Scrollbar Enhancement */
-.sidebar::-webkit-scrollbar {
-  width: 6px;
-}
-
-.sidebar::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-}
-
-.sidebar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 10px;
-  transition: background 0.2s ease;
-}
-
-.sidebar::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.5);
-}
-
-/* Text Selection */
-.sidebar ::selection {
-  background: rgba(255, 255, 255, 0.2);
+.ripple-effect {
+  animation: ripple 0.6s linear;
 }
 </style>
 
 <script>
-// Enhanced sidebar functionality
 document.addEventListener('DOMContentLoaded', function() {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('sidebarOverlay');
-  const collapseElements = document.querySelectorAll('[data-bs-toggle="collapse"]');
-  
-  // Mobile sidebar toggle functionality
-  function initMobileSidebar() {
-    const sidebarToggle = document.querySelector('[data-sidebar-toggle]');
-    
-    if (sidebarToggle) {
-      sidebarToggle.addEventListener('click', function(e) {
-        e.preventDefault();
-        toggleSidebar();
-      });
-    }
-    
-    // Close sidebar when clicking overlay
-    if (overlay) {
-      overlay.addEventListener('click', closeSidebar);
-    }
-    
-    // Handle escape key
-    document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape' && sidebar.classList.contains('show')) {
-        closeSidebar();
-      }
-    });
-  }
-  
+  const sidebarToggle = document.getElementById('sidebarToggle');
+
   function toggleSidebar() {
-    if (window.innerWidth <= 991) {
-      sidebar.classList.toggle('show');
-      if (overlay) {
-        overlay.style.display = sidebar.classList.contains('show') ? 'block' : 'none';
-      }
+    if (window.innerWidth <= 1023) { // lg breakpoint in Tailwind
+      sidebar.classList.toggle('-translate-x-full');
+      overlay.classList.toggle('hidden');
+      document.body.classList.toggle('overflow-hidden');
       
-      // Prevent body scroll when sidebar is open
-      document.body.style.overflow = sidebar.classList.contains('show') ? 'hidden' : '';
+      // Update button icon
+      const icon = sidebarToggle.querySelector('i');
+      if (sidebar.classList.contains('-translate-x-full')) {
+        icon.className = 'bi bi-list text-xl';
+      } else {
+        icon.className = 'bi bi-x text-xl';
+      }
     }
   }
-  
+
   function closeSidebar() {
-    sidebar.classList.remove('show');
-    if (overlay) {
-      overlay.style.display = 'none';
-    }
-    document.body.style.overflow = '';
+    sidebar.classList.add('-translate-x-full');
+    overlay.classList.add('hidden');
+    document.body.classList.remove('overflow-hidden');
+    
+    // Reset button icon
+    const icon = sidebarToggle.querySelector('i');
+    icon.className = 'bi bi-list text-xl';
   }
-  
-  // Handle window resize
+
+  // Toggle dropdown
+  window.toggleDropdown = function() {
+    const dropdown = document.getElementById('profileDropdown');
+    dropdown.classList.toggle('hidden');
+  }
+
+  // Close dropdown when clicking outside
+  document.addEventListener('click', function(e) {
+    const dropdown = document.getElementById('profileDropdown');
+    const button = e.target.closest('.dropdown-toggle');
+    
+    if (!button && !dropdown.contains(e.target)) {
+      dropdown.classList.add('hidden');
+    }
+  });
+
+  // Event listeners
+  if (sidebarToggle) sidebarToggle.addEventListener('click', toggleSidebar);
+  if (overlay) overlay.addEventListener('click', closeSidebar);
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeSidebar();
+  });
+
   window.addEventListener('resize', function() {
-    if (window.innerWidth > 991) {
+    if (window.innerWidth > 1023) { // lg breakpoint
       closeSidebar();
     }
   });
-  
-  // Auto-collapse other accordion items
-  collapseElements.forEach(element => {
-    element.addEventListener('click', function() {
-      const targetId = this.getAttribute('data-bs-target') || this.getAttribute('href');
-      const otherCollapses = document.querySelectorAll('.collapse.show');
-      
-      otherCollapses.forEach(collapse => {
-        if (collapse.id !== targetId.substring(1)) {
-          const bsCollapse = new bootstrap.Collapse(collapse, {
-            toggle: false
-          });
-          bsCollapse.hide();
-        }
-      });
-    });
-  });
-  
-  // Smooth scroll to active menu item
-  const activeLink = document.querySelector('.nav-link.active');
+
+  // Smooth scroll active link into view
+  const activeLink = document.querySelector('.modern-nav-link.bg-white');
   if (activeLink) {
-    setTimeout(() => {
-      activeLink.scrollIntoView({ 
-        behavior: 'smooth', 
-        block: 'nearest',
-        inline: 'nearest'
-      });
-    }, 100);
+    activeLink.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
-  
-  // Add click ripple effect
+
+  // Add ripple effect
   document.querySelectorAll('.modern-nav-link').forEach(link => {
     link.addEventListener('click', function(e) {
       const ripple = document.createElement('span');
@@ -445,41 +242,39 @@ document.addEventListener('DOMContentLoaded', function() {
       const x = e.clientX - rect.left - size / 2;
       const y = e.clientY - rect.top - size / 2;
       
+      ripple.className = 'absolute rounded-full bg-white bg-opacity-30 pointer-events-none ripple-effect';
       ripple.style.cssText = `
-        position: absolute;
         width: ${size}px;
         height: ${size}px;
         left: ${x}px;
         top: ${y}px;
-        background: rgba(255, 255, 255, 0.2);
-        border-radius: 50%;
         transform: scale(0);
-        animation: ripple 0.6s linear;
-        pointer-events: none;
         z-index: 0;
       `;
       
       this.appendChild(ripple);
-      
-      setTimeout(() => {
-        ripple.remove();
-      }, 600);
+      setTimeout(() => ripple.remove(), 600);
     });
   });
-  
-  // Initialize mobile functionality
-  initMobileSidebar();
 });
 
-// Add CSS for ripple animation
-const rippleStyle = document.createElement('style');
-rippleStyle.textContent = `
-  @keyframes ripple {
-    to {
-      transform: scale(4);
-      opacity: 0;
+// Make functions globally available
+window.toggleSidebar = function() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  const sidebarToggle = document.getElementById('sidebarToggle');
+
+  if (window.innerWidth <= 1023) {
+    sidebar.classList.toggle('-translate-x-full');
+    overlay.classList.toggle('hidden');
+    document.body.classList.toggle('overflow-hidden');
+    
+    const icon = sidebarToggle.querySelector('i');
+    if (sidebar.classList.contains('-translate-x-full')) {
+      icon.className = 'bi bi-list text-xl';
+    } else {
+      icon.className = 'bi bi-x text-xl';
     }
   }
-`;
-document.head.appendChild(rippleStyle);
+};
 </script>

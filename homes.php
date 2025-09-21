@@ -14,246 +14,159 @@ $salesData = json_encode([500, 700, 400, 900, 650, 1200, 800]);
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-  <style>
-    /* Main layout styles */
-    body {
-      padding-top: 56px; /* Account for fixed navbar */
-    }
-    
-    .main-content {
-      margin-left: 250px;
-      padding: 20px;
-      min-height: calc(100vh - 56px);
-      transition: margin-left 0.3s ease;
-    }
-    
-    @media (max-width: 991px) {
-      .main-content {
-         padding: 20px;
-        margin-left: 0;
-        margin-top: 100px;
-        padding: 15px;
-      }
-    }
-    
-    /* Dashboard specific styles */
-    .dashboard-card {
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    
-    .dashboard-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-    }
-    
-    .stat-icon {
-      width: 50px;
-      height: 50px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.5rem;
-      margin-bottom: 1rem;
-    }
-    
-    .chart-container {
-      position: relative;
-      height: 400px;
-    }
-  </style>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body>
+<body class="bg-gray-100 min-h-screen">
   <!-- Include navbar -->
   <?php include 'includes/navbar.php'; ?>
-  
+
   <!-- Include sidebar -->
   <?php include 'includes/sidebar.php'; ?>
-  
+
   <!-- Main Content -->
-  <div class="main-content">
-    <div class="container-fluid">
-      <!-- Page Header -->
-      <div class="d-flex justify-content-between align-items-center mb-4">
+  <div class="lg:ml-64 p-6">
+    <div class="max-w-7xl mx-auto">
+      
+      <!-- Header -->
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
         <div>
-          <h1 class="h3 mb-0">Dashboard</h1>
-          <p class="text-muted">Welcome back! Here's what's happening with your store.</p>
+          <h1 class="text-2xl font-bold text-gray-800">Dashboard</h1>
+          <p class="text-gray-500">Welcome back! Here's what's happening with your store.</p>
         </div>
-        <div class="d-flex gap-2">
-          <button class="btn btn-outline-secondary">
-            <i class="bi bi-download me-2"></i>Export
+        <div class="flex gap-2 mt-4 md:mt-0">
+          <button class="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-100">
+            <i class="bi bi-download mr-2"></i>Export
           </button>
-          <button class="btn btn-primary">
-            <i class="bi bi-plus me-2"></i>Add New
+          <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            <i class="bi bi-plus mr-2"></i>Add New
           </button>
         </div>
       </div>
-      
-      <!-- Statistics Cards -->
-      <div class="row mb-4">
-        <div class="col-xl-3 col-md-6 mb-4">
-          <div class="card dashboard-card border-0 shadow-sm h-100">
-            <div class="card-body">
-              <div class="d-flex align-items-center">
-                <div class="stat-icon bg-primary bg-opacity-10 text-primary me-3">
-                  <i class="bi bi-box"></i>
-                </div>
-                <div>
-                  <h6 class="card-title text-muted mb-1">Total Products</h6>
-                  <h3 class="mb-0 text-dark"><?php echo number_format($totalProducts); ?></h3>
-                  <small class="text-success">
-                    <i class="bi bi-arrow-up"></i> 12% from last month
-                  </small>
-                </div>
-              </div>
+
+      <!-- Stats Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        <div class="bg-white p-6 rounded-xl shadow hover:shadow-lg transition">
+          <div class="flex items-center">
+            <div class="w-12 h-12 flex items-center justify-center rounded-full bg-blue-100 text-blue-600 mr-4">
+              <i class="bi bi-box text-xl"></i>
+            </div>
+            <div>
+              <p class="text-sm text-gray-500">Total Products</p>
+              <h3 class="text-xl font-bold text-gray-800"><?php echo number_format($totalProducts); ?></h3>
+              <span class="text-green-600 text-xs"><i class="bi bi-arrow-up"></i> 12% from last month</span>
             </div>
           </div>
         </div>
-        
-        <div class="col-xl-3 col-md-6 mb-4">
-          <div class="card dashboard-card border-0 shadow-sm h-100">
-            <div class="card-body">
-              <div class="d-flex align-items-center">
-                <div class="stat-icon bg-success bg-opacity-10 text-success me-3">
-                  <i class="bi bi-cart-check"></i>
-                </div>
-                <div>
-                  <h6 class="card-title text-muted mb-1">Total Orders</h6>
-                  <h3 class="mb-0 text-dark"><?php echo number_format($totalOrders); ?></h3>
-                  <small class="text-success">
-                    <i class="bi bi-arrow-up"></i> 8% from last month
-                  </small>
-                </div>
-              </div>
+
+        <div class="bg-white p-6 rounded-xl shadow hover:shadow-lg transition">
+          <div class="flex items-center">
+            <div class="w-12 h-12 flex items-center justify-center rounded-full bg-green-100 text-green-600 mr-4">
+              <i class="bi bi-cart-check text-xl"></i>
+            </div>
+            <div>
+              <p class="text-sm text-gray-500">Total Orders</p>
+              <h3 class="text-xl font-bold text-gray-800"><?php echo number_format($totalOrders); ?></h3>
+              <span class="text-green-600 text-xs"><i class="bi bi-arrow-up"></i> 8% from last month</span>
             </div>
           </div>
         </div>
-        
-        <div class="col-xl-3 col-md-6 mb-4">
-          <div class="card dashboard-card border-0 shadow-sm h-100">
-            <div class="card-body">
-              <div class="d-flex align-items-center">
-                <div class="stat-icon bg-warning bg-opacity-10 text-warning me-3">
-                  <i class="bi bi-currency-dollar"></i>
-                </div>
-                <div>
-                  <h6 class="card-title text-muted mb-1">Total Revenue</h6>
-                  <h3 class="mb-0 text-dark">$<?php echo number_format($totalRevenue, 2); ?></h3>
-                  <small class="text-success">
-                    <i class="bi bi-arrow-up"></i> 15% from last month
-                  </small>
-                </div>
-              </div>
+
+        <div class="bg-white p-6 rounded-xl shadow hover:shadow-lg transition">
+          <div class="flex items-center">
+            <div class="w-12 h-12 flex items-center justify-center rounded-full bg-yellow-100 text-yellow-600 mr-4">
+              <i class="bi bi-currency-dollar text-xl"></i>
+            </div>
+            <div>
+              <p class="text-sm text-gray-500">Total Revenue</p>
+              <h3 class="text-xl font-bold text-gray-800">$<?php echo number_format($totalRevenue, 2); ?></h3>
+              <span class="text-green-600 text-xs"><i class="bi bi-arrow-up"></i> 15% from last month</span>
             </div>
           </div>
         </div>
-        
-        <div class="col-xl-3 col-md-6 mb-4">
-          <div class="card dashboard-card border-0 shadow-sm h-100">
-            <div class="card-body">
-              <div class="d-flex align-items-center">
-                <div class="stat-icon bg-info bg-opacity-10 text-info me-3">
-                  <i class="bi bi-people"></i>
-                </div>
-                <div>
-                  <h6 class="card-title text-muted mb-1">Total Customers</h6>
-                  <h3 class="mb-0 text-dark"><?php echo number_format($totalCustomers); ?></h3>
-                  <small class="text-success">
-                    <i class="bi bi-arrow-up"></i> 5% from last month
-                  </small>
-                </div>
-              </div>
+
+        <div class="bg-white p-6 rounded-xl shadow hover:shadow-lg transition">
+          <div class="flex items-center">
+            <div class="w-12 h-12 flex items-center justify-center rounded-full bg-cyan-100 text-cyan-600 mr-4">
+              <i class="bi bi-people text-xl"></i>
+            </div>
+            <div>
+              <p class="text-sm text-gray-500">Total Customers</p>
+              <h3 class="text-xl font-bold text-gray-800"><?php echo number_format($totalCustomers); ?></h3>
+              <span class="text-green-600 text-xs"><i class="bi bi-arrow-up"></i> 5% from last month</span>
             </div>
           </div>
         </div>
       </div>
-      
-      <!-- Charts Row -->
-      <div class="row">
-        <div class="col-lg-8 mb-4">
-          <div class="card border-0 shadow-sm">
-            <div class="card-header bg-white border-0 py-3">
-              <div class="d-flex justify-content-between align-items-center">
-                <h5 class="card-title mb-0">Sales Performance</h5>
-                <div class="dropdown">
-                  <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                    Last 7 days
-                  </button>
-                  <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="#">Last 7 days</a></li>
-                    <li><a class="dropdown-item" href="#">Last 30 days</a></li>
-                    <li><a class="dropdown-item" href="#">Last 3 months</a></li>
-                  </ul>
-                </div>
+
+      <!-- Charts & Recent Activity -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Sales Chart -->
+        <div class="bg-white p-6 rounded-xl shadow col-span-2">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-bold text-gray-700">Sales Performance</h2>
+            <select class="text-sm border-gray-300 rounded-lg">
+              <option>Last 7 days</option>
+              <option>Last 30 days</option>
+              <option>Last 3 months</option>
+            </select>
+          </div>
+          <div class="h-80">
+            <canvas id="salesChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="bg-white p-6 rounded-xl shadow">
+          <h2 class="text-lg font-bold text-gray-700 mb-4">Recent Activity</h2>
+          <div class="space-y-4">
+            <div class="flex items-center">
+              <div class="w-10 h-10 flex items-center justify-center bg-green-100 text-green-600 rounded-full mr-3">
+                <i class="bi bi-cart-plus"></i>
+              </div>
+              <div>
+                <p class="text-sm font-medium text-gray-800">New order #1234</p>
+                <p class="text-xs text-gray-500">2 minutes ago</p>
               </div>
             </div>
-            <div class="card-body">
-              <div class="chart-container">
-                <canvas id="salesChart"></canvas>
+            <div class="flex items-center">
+              <div class="w-10 h-10 flex items-center justify-center bg-blue-100 text-blue-600 rounded-full mr-3">
+                <i class="bi bi-person-plus"></i>
+              </div>
+              <div>
+                <p class="text-sm font-medium text-gray-800">New customer registered</p>
+                <p class="text-xs text-gray-500">5 minutes ago</p>
+              </div>
+            </div>
+            <div class="flex items-center">
+              <div class="w-10 h-10 flex items-center justify-center bg-yellow-100 text-yellow-600 rounded-full mr-3">
+                <i class="bi bi-exclamation-triangle"></i>
+              </div>
+              <div>
+                <p class="text-sm font-medium text-gray-800">Low stock alert</p>
+                <p class="text-xs text-gray-500">10 minutes ago</p>
+              </div>
+            </div>
+            <div class="flex items-center">
+              <div class="w-10 h-10 flex items-center justify-center bg-cyan-100 text-cyan-600 rounded-full mr-3">
+                <i class="bi bi-box"></i>
+              </div>
+              <div>
+                <p class="text-sm font-medium text-gray-800">Product updated</p>
+                <p class="text-xs text-gray-500">15 minutes ago</p>
               </div>
             </div>
           </div>
-        </div>
-        
-        <div class="col-lg-4 mb-4">
-          <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-white border-0 py-3">
-              <h5 class="card-title mb-0">Recent Activity</h5>
-            </div>
-            <div class="card-body">
-              <div class="activity-item d-flex align-items-center mb-3">
-                <div class="activity-icon bg-success bg-opacity-10 text-success rounded-circle me-3 p-2">
-                  <i class="bi bi-cart-plus"></i>
-                </div>
-                <div>
-                  <p class="mb-0">New order #1234</p>
-                  <small class="text-muted">2 minutes ago</small>
-                </div>
-              </div>
-              <div class="activity-item d-flex align-items-center mb-3">
-                <div class="activity-icon bg-primary bg-opacity-10 text-primary rounded-circle me-3 p-2">
-                  <i class="bi bi-person-plus"></i>
-                </div>
-                <div>
-                  <p class="mb-0">New customer registered</p>
-                  <small class="text-muted">5 minutes ago</small>
-                </div>
-              </div>
-              <div class="activity-item d-flex align-items-center mb-3">
-                <div class="activity-icon bg-warning bg-opacity-10 text-warning rounded-circle me-3 p-2">
-                  <i class="bi bi-exclamation-triangle"></i>
-                </div>
-                <div>
-                  <p class="mb-0">Low stock alert</p>
-                  <small class="text-muted">10 minutes ago</small>
-                </div>
-              </div>
-              <div class="activity-item d-flex align-items-center mb-3">
-                <div class="activity-icon bg-info bg-opacity-10 text-info rounded-circle me-3 p-2">
-                  <i class="bi bi-box"></i>
-                </div>
-                <div>
-                  <p class="mb-0">Product updated</p>
-                  <small class="text-muted">15 minutes ago</small>
-                </div>
-              </div>
-              <div class="text-center">
-                <a href="#" class="btn btn-sm btn-outline-primary">View all activity</a>
-              </div>
-            </div>
+          <div class="text-center mt-4">
+            <a href="#" class="text-blue-600 text-sm hover:underline">View all activity</a>
           </div>
         </div>
       </div>
     </div>
   </div>
-  
-  <!-- Scripts -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- ChartJS Script -->
   <script>
-    // Sales Chart
     const ctx = document.getElementById('salesChart').getContext('2d');
     new Chart(ctx, {
       type: 'line',
@@ -262,8 +175,8 @@ $salesData = json_encode([500, 700, 400, 900, 650, 1200, 800]);
         datasets: [{
           label: 'Sales ($)',
           data: <?php echo $salesData; ?>,
-          borderColor: '#0d6efd',
-          backgroundColor: 'rgba(13, 110, 253, 0.1)',
+          borderColor: '#2563eb',
+          backgroundColor: 'rgba(37,99,235,0.1)',
           fill: true,
           tension: 0.4,
           pointRadius: 4,
@@ -273,18 +186,12 @@ $salesData = json_encode([500, 700, 400, 900, 650, 1200, 800]);
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            display: false
-          }
-        },
+        plugins: { legend: { display: false } },
         scales: {
           y: {
             beginAtZero: true,
             ticks: {
-              callback: function(value) {
-                return '$' + value;
-              }
+              callback: function(value) { return '$' + value; }
             }
           }
         }

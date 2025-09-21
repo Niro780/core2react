@@ -2,7 +2,7 @@
 session_start();
 require_once "config.php";
 
-// Generate CSRF token only once per session
+// Generate CSRF token once per session
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
@@ -10,21 +10,27 @@ if (empty($_SESSION['csrf_token'])) {
 $error = '';
 $success = '';
 
+// ✅ If redirected back with success message
+if (!empty($_SESSION['success_message'])) {
+    $success = $_SESSION['success_message'];
+    unset($_SESSION['success_message']);
+}
+
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
-    // CSRF check
+    // CSRF validation
     if (!isset($_POST["csrf_token"]) || $_POST["csrf_token"] !== $_SESSION["csrf_token"]) {
         die("❌ CSRF validation failed.");
     }
 
+    // Sanitize inputs
     $name = trim($_POST["name"]);
     $email = trim($_POST["email"]);
     $password = trim($_POST["password"]);
     $confirm_password = trim($_POST["confirm_password"]);
-    $role = "seller"; // default role
 
     // Validation
     if (empty($name) || empty($email) || empty($password) || empty($confirm_password)) {
-        $error = "All fields are required!";
+        $error = "All required fields must be filled!";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Invalid email format!";
     } elseif ($password !== $confirm_password) {
@@ -38,19 +44,23 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $pdo = getDBConnection();
 
             // Check if email already exists
-            $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
+            $stmt = $pdo->prepare("SELECT id FROM sellers WHERE email = ?");
             $stmt->execute([$email]);
 
             if ($stmt->rowCount() > 0) {
                 $error = "Email already exists!";
             } else {
-                // Hash password
+                // Hash the password
                 $hashed_password = password_hash($password, PASSWORD_DEFAULT);
 
-                $stmt = $pdo->prepare("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)");
-                $stmt->execute([$name, $email, $hashed_password, $role]);
+                // Insert into sellers table
+                $stmt = $pdo->prepare("INSERT INTO sellers (name, email, password) VALUES (?, ?, ?)");
+                $stmt->execute([$name, $email, $hashed_password]);
 
-                $success = "✅ Registration successful! You can now <a href='login.php'>login</a>.";
+                // ✅ Redirect to prevent duplicate inserts on refresh
+                $_SESSION['success_message'] = "✅ Registration successful! You can now <a href='login.php'>login</a>.";
+                header("Location: register.php");
+                exit();
             }
         } catch (PDOException $e) {
             $error = "Database error: " . $e->getMessage();
@@ -62,7 +72,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Register</title>
+    <title>Seller Registration</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
@@ -70,27 +80,27 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <div class="row justify-content-center">
         <div class="col-md-6">
             <div class="card shadow-lg p-4">
-                <h3 class="text-center mb-4">Register</h3>
+                <h3 class="text-center mb-4">Seller Registration</h3>
 
                 <?php if ($error): ?>
-                    <div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div>
+                    <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
                 <?php endif; ?>
 
                 <?php if ($success): ?>
-                    <div class="alert alert-success"><?php echo $success; ?></div>
+                    <div class="alert alert-success"><?= $success ?></div>
                 <?php endif; ?>
 
                 <form method="POST">
-                    <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                    <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
 
                     <div class="mb-3">
                         <label for="name" class="form-label">Full Name</label>
-                        <input type="text" class="form-control" id="name" name="name" required>
+                        <input type="text" class="form-control" id="name" name="name" required value="<?= htmlspecialchars($_POST['name'] ?? '') ?>">
                     </div>
 
                     <div class="mb-3">
                         <label for="email" class="form-label">Email address</label>
-                        <input type="email" class="form-control" id="email" name="email" required>
+                        <input type="email" class="form-control" id="email" name="email" required value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">
                     </div>
 
                     <div class="mb-3">
