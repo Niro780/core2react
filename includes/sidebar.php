@@ -1,5 +1,5 @@
 <?php
-session_start();
+
 
 // Ensure only sellers can access
 if (!isset($_SESSION['seller_id'])) {
@@ -12,7 +12,7 @@ $currentPage = basename($_SERVER['PHP_SELF']);
 ?>
 
 <!-- Seller Sidebar -->
-<div class="sidebar bg-gradient-to-br from-blue-600 via-purple-600 to-blue-800 text-white fixed top-0 left-0 w-64 h-screen overflow-y-auto z-40 transform -translate-x-full lg:translate-x-0 transition-transform duration-300 ease-in-out" id="sidebar">
+<div class="sidebar bg-gradient-to-r from-blue-800 via-blue-600 to-blue-500 text-white fixed top-0 left-0 w-64 h-screen overflow-y-auto z-40 transform -translate-x-full lg:translate-x-0 transition-transform duration-300 ease-in-out" id="sidebar">
   
   <!-- Sidebar Header -->
   <div class="p-4 border-b border-white border-opacity-20">

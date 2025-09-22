@@ -1,17 +1,13 @@
-<?php 
+<?php
 session_start();
 
-// ==========================
 // Require login
-// ==========================
 if (!isset($_SESSION['seller_id'])) {
     header("Location: login.php");
     exit;
 }
 
-// ==========================
-// DB Connection (PDO)
-// ==========================
+// DB Connection
 function getDBConnection() {
     $db_host = "localhost";
     $db_port = "3307";
@@ -24,291 +20,244 @@ function getDBConnection() {
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         return $pdo;
     } catch (PDOException $e) {
-        die("Database connection failed: " . $e->getMessage());
+        die("DB Connection failed: ".$e->getMessage());
     }
 }
 
 $pdo = getDBConnection();
 $sellerId = $_SESSION['seller_id'];
 
-// ==========================
-// Handle Actions
-// ==========================
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['order_id'])) {
-    $orderId = intval($_POST['order_id']);
+// Handle Approve / Complete / Cancel / Reject
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_id'], $_POST['action'])) {
+    $orderId = (int)$_POST['order_id'];
     $action = $_POST['action'];
 
     try {
-        switch ($action) {
-            case 'approve':
-                $stmt = $pdo->prepare("UPDATE orders SET status = 'approved' WHERE id = :id AND seller_id = :seller_id");
-                $stmt->execute(['id' => $orderId, 'seller_id' => $sellerId]);
-                break;
-
-            case 'ship':
-                $stmt = $pdo->prepare("UPDATE orders SET status = 'shipped' WHERE id = :id AND seller_id = :seller_id");
-                $stmt->execute(['id' => $orderId, 'seller_id' => $sellerId]);
-                break;
-
-            case 'deliver':
-                $stmt = $pdo->prepare("UPDATE orders SET status = 'delivered' WHERE id = :id AND seller_id = :seller_id");
-                $stmt->execute(['id' => $orderId, 'seller_id' => $sellerId]);
-                break;
-
-            case 'cancel':
-                if (!empty($_POST['reason'])) {
-                    $reason = $_POST['reason'];
-                    $notes = $_POST['notes'] ?? '';
-                    $fullReason = $notes ? $reason . ' - ' . $notes : $reason;
-                    
-                    $stmt = $pdo->prepare("UPDATE orders SET status = 'canceled', cancel_reason = :reason WHERE id = :id AND seller_id = :seller_id");
-                    $stmt->execute(['reason' => $fullReason, 'id' => $orderId, 'seller_id' => $sellerId]);
-                }
-                break;
-
-            case 'approve_return':
-                $stmt = $pdo->prepare("UPDATE orders SET status = 'returned', refund_status = 'approved' WHERE id = :id AND seller_id = :seller_id");
-                $stmt->execute(['id' => $orderId, 'seller_id' => $sellerId]);
-                break;
-
-            case 'reject_return':
-                if (!empty($_POST['rejection_reason'])) {
-                    $rejectionReason = $_POST['rejection_reason'];
-                    $stmt = $pdo->prepare("UPDATE orders SET refund_status = 'rejected', cancel_reason = :reason WHERE id = :id AND seller_id = :seller_id");
-                    $stmt->execute(['reason' => 'Return rejected: ' . $rejectionReason, 'id' => $orderId, 'seller_id' => $sellerId]);
-                }
-                break;
-
-            case 'process_return':
-                if (!empty($_POST['return_reason'])) {
-                    $returnReason = $_POST['return_reason'];
-                    $stmt = $pdo->prepare("UPDATE orders SET return_reason = :return_reason, refund_status = 'pending' WHERE id = :id AND seller_id = :seller_id");
-                    $stmt->execute(['return_reason' => $returnReason, 'id' => $orderId, 'seller_id' => $sellerId]);
-                }
-                break;
+        if ($action === 'approve') {
+            $stmt = $pdo->prepare("UPDATE orders SET refund_status='approved' WHERE id=? AND seller_id=?");
+            $stmt->execute([$orderId, $sellerId]);
+        } elseif ($action === 'process') {
+            $stmt = $pdo->prepare("UPDATE orders SET refund_status='processing' WHERE id=? AND seller_id=?");
+            $stmt->execute([$orderId, $sellerId]);
+        } elseif ($action === 'complete') {
+            $stmt = $pdo->prepare("UPDATE orders SET refund_status='completed', refund_processed_date=NOW() WHERE id=? AND seller_id=?");
+            $stmt->execute([$orderId, $sellerId]);
+      
+        } elseif ($action === 'reject') {
+            $rejectionReason = $_POST['rejection_reason'] ?? '';
+            if (empty($rejectionReason)) {
+                $_SESSION['message'] = 'Rejection reason is required!';
+                $_SESSION['message_type'] = 'error';
+            } else {
+                $stmt = $pdo->prepare("UPDATE orders SET refund_status='rejected', rejection_reason=?, rejection_date=NOW() WHERE id=? AND seller_id=?");
+                $stmt->execute([$rejectionReason, $orderId, $sellerId]);
+                $_SESSION['message'] = 'Refund request rejected successfully!';
+                $_SESSION['message_type'] = 'success';
+            }
         }
-
-        header("Location: ".$_SERVER['PHP_SELF']."?success=1");
-        exit;
+        
+        if ($action !== 'reject' || !empty($_POST['rejection_reason'])) {
+            $_SESSION['message'] = 'Refund status updated successfully!';
+            $_SESSION['message_type'] = 'success';
+        }
     } catch (Exception $e) {
-        $error = "Action failed: " . $e->getMessage();
+        $_SESSION['message'] = 'Error updating refund status: ' . $e->getMessage();
+        $_SESSION['message_type'] = 'error';
     }
+    
+    header("Location: ".$_SERVER['PHP_SELF']);
+    exit;
 }
 
-// ==========================
-// Fetch Orders with Cancellations or Return/Refund Requests Only - FIXED QUERY
-// ==========================
-$sql = "
-    SELECT 
-        o.id AS order_id,
-        o.user_id AS customer_id,
-        o.seller_id,
-        o.total_amount,
-        o.status,
-        o.created_at,
-        o.cancel_reason,
-        o.return_reason,
-        o.refund_status,
-        p.name AS product_name,
-        p.image_url,
-        oi.quantity,
-        oi.price
+// Fetch all orders for seller
+$stmt = $pdo->prepare("
+    SELECT o.*, 
+        CONCAT(c.first_name,' ',c.last_name) AS customer_name, 
+        c.email AS customer_email, 
+        c.phone AS customer_phone,
+        p.name AS product_name, 
+        p.price AS product_price, 
+        p.image AS product_image
     FROM orders o
-    JOIN order_items oi ON o.id = oi.order_id
-    JOIN products p ON oi.product_id = p.id
-    WHERE o.seller_id = :seller_id 
-    AND (
-        o.status = 'canceled' 
-        OR o.return_reason IS NOT NULL 
-        OR (o.refund_status IS NOT NULL AND o.refund_status != 'none')
-    )
+    LEFT JOIN customers c ON o.customer_id = c.id
+    LEFT JOIN products p ON o.product_id = p.id
+    WHERE o.seller_id = ? AND o.refund_status IS NOT NULL
     ORDER BY o.created_at DESC
-";
-
-$stmt = $pdo->prepare($sql);
-$stmt->execute(['seller_id' => $sellerId]);
+");
+$stmt->execute([$sellerId]);
 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Group data by order
+// Process orders
 $orders = [];
-foreach ($rows as $row) {
-    $oid = $row['order_id'];
-    if (!isset($orders[$oid])) {
-        $orders[$oid] = [
-            'order_id' => $row['order_id'],
-            'customer_id' => $row['customer_id'],
-            'status' => $row['status'],
-            'total_amount' => $row['total_amount'],
-            'created_at' => $row['created_at'],
-            'cancel_reason' => $row['cancel_reason'],
-            'return_reason' => $row['return_reason'],
-            'refund_status' => $row['refund_status'],
-            'products' => []
-        ];
+foreach($rows as $row) {
+    $id = $row['id'];
+    if(!isset($orders[$id])) {
+        $orders[$id] = $row;
+        $orders[$id]['products'] = [];
     }
-    $orders[$oid]['products'][] = [
+    $orders[$id]['products'][] = [
         'name' => $row['product_name'],
-        'image_url' => $row['image_url'],
-        'quantity' => $row['quantity'],
-        'price' => $row['price']
+        'price' => $row['product_price'],
+        'image' => $row['product_image'],
+        'quantity' => $row['quantity']
     ];
 }
 
-// Helper functions
-function getStatusInfo($status) {
-    $statusInfo = [
-        'pending' => ['class' => 'bg-yellow-100 text-yellow-800', 'label' => 'Pending'],
-        'approved' => ['class' => 'bg-blue-100 text-blue-800', 'label' => 'Approved'],
-        'shipped' => ['class' => 'bg-purple-100 text-purple-800', 'label' => 'Shipped'],
-        'delivered' => ['class' => 'bg-green-100 text-green-800', 'label' => 'Delivered'],
-        'canceled' => ['class' => 'bg-red-100 text-red-800', 'label' => 'Canceled'],
-        'returned' => ['class' => 'bg-orange-100 text-orange-800', 'label' => 'Returned']
-    ];
-    
-    return $statusInfo[$status] ?? ['class' => 'bg-gray-100 text-gray-800', 'label' => ucfirst($status)];
+// Get filter from URL
+$filter = $_GET['status'] ?? 'all';
+$filteredOrders = [];
+
+if ($filter === 'all') {
+    $filteredOrders = $orders;
+} else {
+    $filteredOrders = array_filter($orders, fn($o) => ($o['refund_status'] ?? 'requested') == $filter);
 }
 
-function getRefundStatusInfo($refundStatus) {
-    $statusInfo = [
-        'none' => ['class' => 'bg-gray-100 text-gray-600', 'label' => 'No Refund'],
-        'pending' => ['class' => 'bg-yellow-100 text-yellow-800', 'label' => 'Refund Pending'],
-        'approved' => ['class' => 'bg-green-100 text-green-800', 'label' => 'Refund Approved'],
-        'rejected' => ['class' => 'bg-red-100 text-red-800', 'label' => 'Refund Rejected'],
-        'processed' => ['class' => 'bg-blue-100 text-blue-800', 'label' => 'Refund Processed']
-    ];
+// Get status counts
+$statusCounts = [
+    'all' => count($orders),
+    'requested' => count(array_filter($orders, fn($o) => ($o['refund_status'] ?? 'requested') == 'requested')),
+    'approved' => count(array_filter($orders, fn($o) => ($o['refund_status'] ?? 'requested') == 'approved')),
+    'processing' => count(array_filter($orders, fn($o) => ($o['refund_status'] ?? 'requested') == 'processing')),
+    'completed' => count(array_filter($orders, fn($o) => ($o['refund_status'] ?? 'requested') == 'completed')),
     
-    return $statusInfo[$refundStatus] ?? ['class' => 'bg-gray-100 text-gray-800', 'label' => 'Unknown'];
-}
+    'rejected' => count(array_filter($orders, fn($o) => ($o['refund_status'] ?? 'requested') == 'rejected'))
+];
 ?>
-
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Order Management - Cancellation & Returns</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Refund Management</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-    <style>
-        .modal-hidden { display: none !important; }
-        .workflow-step {
-            transition: all 0.3s ease;
-        }
-        .workflow-step.completed {
-            background-color: #10b981;
-            color: white;
-        }
-        .workflow-step.current {
-            background-color: #3b82f6;
-            color: white;
-        }
-    </style>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
-<body class="bg-gray-50 min-h-screen">
+<body class="bg-gray-50">
 
+    <!-- Include navbar -->
     <?php include 'includes/navbar.php'; ?>
+
+    <!-- Include sidebar -->
     <?php include 'includes/sidebar.php'; ?>
-    
-    <main class="ml-64 pt-20 p-6 relative z-10">
-        <div class="max-w-7xl mx-auto">
-            <div class="flex justify-between items-center mb-8">
-                <div>
-                    <h2 class="text-3xl font-bold text-gray-900">Cancellations & Returns Management</h2>
-                    <p class="text-gray-600 mt-2">Manage canceled orders and refund requests</p>
-                </div>
-                
-                <?php if (isset($_GET['success'])): ?>
-                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
-                    Action completed successfully!
-                </div>
-                <?php endif; ?>
-                
-                <?php if (isset($error)): ?>
-                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-                    <?= htmlspecialchars($error) ?>
-                </div>
-                <?php endif; ?>
+
+    <!-- Main Content -->
+    <div class="ml-64 pt-16">
+        <div class="p-6">
+            <!-- Page Header -->
+            <div class="mb-6">
+                <h1 class="text-2xl font-bold text-gray-900">Refund Management</h1>
+                <p class="text-gray-600 mt-1">Manage customer refund requests</p>
             </div>
 
-            <!-- Statistics Cards - Updated to show correct counts -->
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-                <div class="bg-white p-4 rounded-lg shadow text-center border-l-4 border-red-500">
-                    <div class="text-2xl font-bold text-red-600"><?= count(array_filter($orders, fn($o) => $o['status'] === 'canceled')) ?></div>
-                    <div class="text-sm text-gray-600">Canceled Orders</div>
-                </div>
-                <div class="bg-white p-4 rounded-lg shadow text-center border-l-4 border-orange-500">
-                    <div class="text-2xl font-bold text-orange-600"><?= count(array_filter($orders, fn($o) => !empty($o['return_reason']))) ?></div>
-                    <div class="text-sm text-gray-600">Return Requests</div>
-                </div>
-                <div class="bg-white p-4 rounded-lg shadow text-center border-l-4 border-yellow-500">
-                    <div class="text-2xl font-bold text-yellow-600"><?= count(array_filter($orders, fn($o) => $o['refund_status'] === 'pending')) ?></div>
-                    <div class="text-sm text-gray-600">Pending Refunds</div>
-                </div>
-                <div class="bg-white p-4 rounded-lg shadow text-center border-l-4 border-blue-500">
-                    <div class="text-2xl font-bold text-blue-600"><?= count(array_filter($orders, fn($o) => in_array($o['refund_status'], ['approved', 'rejected']))) ?></div>
-                    <div class="text-sm text-gray-600">Processed Refunds</div>
+            <!-- Alert Messages -->
+            <?php if (isset($_SESSION['message'])): ?>
+            <div class="mb-6 p-4 rounded-md <?= $_SESSION['message_type'] === 'success' ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200' ?>">
+                <?= htmlspecialchars($_SESSION['message']) ?>
+            </div>
+            <?php 
+                unset($_SESSION['message']);
+                unset($_SESSION['message_type']);
+            endif; 
+            ?>
+
+            <!-- Status Filter Tabs -->
+            <div class="mb-6">
+                <div class="border-b border-gray-200">
+                    <nav class="-mb-px flex space-x-8">
+                        <a href="?status=all" 
+                           class="<?= $filter === 'all' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' ?> whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm">
+                            All <span class="ml-1 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs"><?= $statusCounts['all'] ?></span>
+                        </a>
+                        <a href="?status=requested" 
+                           class="<?= $filter === 'requested' ? 'border-yellow-500 text-yellow-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' ?> whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm">
+                            Requested <span class="ml-1 bg-yellow-100 text-yellow-600 py-0.5 px-2 rounded-full text-xs"><?= $statusCounts['requested'] ?></span>
+                        </a>
+                        <a href="?status=approved" 
+                           class="<?= $filter === 'approved' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' ?> whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm">
+                            Approved <span class="ml-1 bg-blue-100 text-blue-600 py-0.5 px-2 rounded-full text-xs"><?= $statusCounts['approved'] ?></span>
+                        </a>
+                        <a href="?status=processing" 
+                           class="<?= $filter === 'processing' ? 'border-orange-500 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' ?> whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm">
+                            Processing <span class="ml-1 bg-orange-100 text-orange-600 py-0.5 px-2 rounded-full text-xs"><?= $statusCounts['processing'] ?></span>
+                        </a>
+                        <a href="?status=completed" 
+                           class="<?= $filter === 'completed' ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' ?> whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm">
+                            Completed <span class="ml-1 bg-green-100 text-green-600 py-0.5 px-2 rounded-full text-xs"><?= $statusCounts['completed'] ?></span>
+                        </a>
+                      
+                        <a href="?status=rejected" 
+                           class="<?= $filter === 'rejected' ? 'border-red-500 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' ?> whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm">
+                            Rejected <span class="ml-1 bg-red-100 text-red-600 py-0.5 px-2 rounded-full text-xs"><?= $statusCounts['rejected'] ?></span>
+                        </a>
+                    </nav>
                 </div>
             </div>
 
-            <?php if (empty($orders)): ?>
-                <div class="bg-blue-50 border-l-4 border-blue-400 p-6 rounded">
-                    <div class="flex items-center">
-                        <div class="ml-3">
-                            <h3 class="text-lg font-medium text-blue-800">No Cancellations or Returns</h3>
-                            <p class="text-sm text-blue-700 mt-1">You don't have any canceled orders or refund requests at the moment.</p>
-                        </div>
+            <!-- Refunds Table -->
+            <div class="bg-white rounded-lg shadow">
+                <?php if(empty($filteredOrders)): ?>
+                    <div class="p-12 text-center">
+                        <i class="fas fa-undo text-4xl text-gray-300 mb-4"></i>
+                        <h3 class="text-lg font-medium text-gray-900 mb-2">No refund requests found</h3>
+                        <p class="text-gray-500">When customers request refunds, they'll appear here.</p>
                     </div>
-                </div>
-            <?php else: ?>
-                <div class="bg-white rounded-lg shadow overflow-hidden">
+                <?php else: ?>
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-800">
+                            <thead class="bg-gray-50">
                                 <tr>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-white">Order #</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-white">Customer</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-white">Status</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-white">Issue Type</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-white">Total</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-white">Date</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-white">Actions</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requested</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
-                                <?php foreach ($orders as $order): ?>
-                                <?php $statusInfo = getStatusInfo($order['status']); ?>
-                                <?php $refundInfo = getRefundStatusInfo($order['refund_status'] ?? 'none'); ?>
+                                <?php foreach($filteredOrders as $order): ?>
                                 <tr class="hover:bg-gray-50">
-                                    <td class="px-4 py-3 font-medium">#<?= htmlspecialchars($order['order_id']) ?></td>
-                                    <td class="px-4 py-3">Customer <?= htmlspecialchars($order['customer_id']) ?></td>
-                                    <td class="px-4 py-3">
-                                        <span class="px-2 py-1 text-xs font-semibold rounded-full <?= $statusInfo['class'] ?>">
-                                            <?= $statusInfo['label'] ?>
-                                        </span>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="text-sm font-medium text-gray-900">#<?= $order['id'] ?></div>
+                                        <div class="text-sm text-gray-500"><?= date('M d, Y', strtotime($order['created_at'])) ?></div>
                                     </td>
-                                    <td class="px-4 py-3">
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="text-sm font-medium text-gray-900">
+                                            <?= htmlspecialchars($order['customer_name'] ?: 'Customer #'.$order['customer_id']) ?>
+                                        </div>
+                                        <div class="text-sm text-gray-500"><?= htmlspecialchars($order['customer_email'] ?: 'No email') ?></div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="text-sm font-medium text-gray-900">
+                                            ₱<?= number_format($order['refund_amount'] ?? $order['total_price'], 2) ?>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
                                         <?php 
-                                        $issueType = '';
-                                        $issueClass = '';
-                                        if ($order['status'] === 'canceled') {
-                                            $issueType = 'Cancellation';
-                                            $issueClass = 'bg-red-100 text-red-800';
-                                        } elseif (!empty($order['return_reason'])) {
-                                            $issueType = 'Return Request';
-                                            $issueClass = 'bg-orange-100 text-orange-800';
-                                        } elseif (!empty($order['refund_status']) && $order['refund_status'] !== 'none') {
-                                            $issueType = 'Refund Request';
-                                            $issueClass = 'bg-yellow-100 text-yellow-800';
-                                        }
+                                        $status = $order['refund_status'] ?? 'requested';
+                                        $statusClasses = [
+                                            'requested' => 'bg-yellow-100 text-yellow-800',
+                                            'approved' => 'bg-blue-100 text-blue-800',
+                                            'processing' => 'bg-orange-100 text-orange-800',
+                                            'completed' => 'bg-green-100 text-green-800',
+                                         
+                                            'rejected' => 'bg-red-100 text-red-800'
+                                        ];
                                         ?>
-                                        <span class="px-2 py-1 text-xs font-semibold rounded-full <?= $issueClass ?>">
-                                            <?= $issueType ?>
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full <?= $statusClasses[$status] ?? 'bg-gray-100 text-gray-800' ?>">
+                                            <?= ucfirst($status) ?>
                                         </span>
                                     </td>
-                                    <td class="px-4 py-3">₱<?= number_format($order['total_amount'], 2) ?></td>
-                                    <td class="px-4 py-3 text-sm"><?= date('M j, Y', strtotime($order['created_at'])) ?></td>
-                                    <td class="px-4 py-3">
-                                        <button onclick="openModal('orderModal<?= $order['order_id'] ?>')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded text-sm">
-                                            <i class="bi bi-eye"></i> Review
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        <?= $order['refund_requested_date'] ? date('M d, Y', strtotime($order['refund_requested_date'])) : 'N/A' ?>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        <button onclick="openModal('modal<?= $order['id'] ?>')" 
+                                                class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                            <i class="fas fa-eye mr-1"></i>
+                                            View
                                         </button>
                                     </td>
                                 </tr>
@@ -316,416 +265,327 @@ function getRefundStatusInfo($refundStatus) {
                             </tbody>
                         </table>
                     </div>
-                </div>
-
-                <!-- Order Management Modals -->
-                <?php foreach ($orders as $order): ?>
-                <div id="orderModal<?= $order['order_id'] ?>" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
-                    <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-                        <div class="p-6">
-                            <!-- Header -->
-                            <div class="flex justify-between items-center mb-6">
-                                <div>
-                                    <h3 class="text-xl font-bold">Order #<?= $order['order_id'] ?> - Issue Review</h3>
-                                    <?php 
-                                    if ($order['status'] === 'canceled') {
-                                        echo '<span class="text-sm text-red-600">Cancellation Review</span>';
-                                    } elseif (!empty($order['return_reason'])) {
-                                        echo '<span class="text-sm text-orange-600">Return Request Review</span>';
-                                    } elseif (!empty($order['refund_status']) && $order['refund_status'] !== 'none') {
-                                        echo '<span class="text-sm text-yellow-600">Refund Request Review</span>';
-                                    }
-                                    ?>
-                                </div>
-                                <button onclick="closeModal('orderModal<?= $order['order_id'] ?>')" class="text-gray-400 hover:text-gray-600">
-                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                                    </svg>
-                                </button>
-                            </div>
-
-                            <!-- Issue Summary -->
-                            <div class="mb-6 p-4 bg-gray-50 rounded-lg">
-                                <h4 class="font-semibold mb-3 text-gray-800">Issue Summary</h4>
-                                <div class="space-y-2">
-                                    <?php if ($order['status'] === 'canceled' && !empty($order['cancel_reason'])): ?>
-                                    <div class="flex items-start space-x-3">
-                                        <span class="inline-block w-2 h-2 bg-red-500 rounded-full mt-2"></span>
-                                        <div>
-                                            <span class="font-medium text-red-700">Cancellation Reason:</span>
-                                            <p class="text-gray-700"><?= htmlspecialchars($order['cancel_reason']) ?></p>
-                                        </div>
-                                    </div>
-                                    <?php endif; ?>
-                                    
-                                    <?php if (!empty($order['return_reason'])): ?>
-                                    <div class="flex items-start space-x-3">
-                                        <span class="inline-block w-2 h-2 bg-orange-500 rounded-full mt-2"></span>
-                                        <div>
-                                            <span class="font-medium text-orange-700">Return Reason:</span>
-                                            <p class="text-gray-700"><?= htmlspecialchars($order['return_reason']) ?></p>
-                                        </div>
-                                    </div>
-                                    <?php endif; ?>
-                                    
-                                    <?php if (!empty($order['refund_status']) && $order['refund_status'] !== 'none'): ?>
-                                    <div class="flex items-start space-x-3">
-                                        <span class="inline-block w-2 h-2 bg-blue-500 rounded-full mt-2"></span>
-                                        <div>
-                                            <span class="font-medium text-blue-700">Refund Status:</span>
-                                            <span class="ml-2 px-2 py-1 text-xs rounded-full <?= getRefundStatusInfo($order['refund_status'])['class'] ?>">
-                                                <?= getRefundStatusInfo($order['refund_status'])['label'] ?>
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-
-                            <!-- Order Details -->
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                                <div>
-                                    <h4 class="font-semibold mb-2">Order Information</h4>
-                                    <div class="space-y-2 text-sm">
-                                        <div><span class="font-medium">Status:</span> 
-                                            <span class="ml-2 px-2 py-1 text-xs rounded-full <?= getStatusInfo($order['status'])['class'] ?>">
-                                                <?= getStatusInfo($order['status'])['label'] ?>
-                                            </span>
-                                        </div>
-                                        <div><span class="font-medium">Total:</span> ₱<?= number_format($order['total_amount'], 2) ?></div>
-                                        <div><span class="font-medium">Created:</span> <?= $order['created_at'] ?></div>
-                                        <?php if (!empty($order['cancel_reason'])): ?>
-                                        <div><span class="font-medium">Cancel Reason:</span> <?= htmlspecialchars($order['cancel_reason']) ?></div>
-                                        <?php endif; ?>
-                                    </div>
-                                </div>
-
-                                <!-- Return/Refund Information -->
-                                <?php if (!empty($order['return_reason']) || (!empty($order['refund_status']) && $order['refund_status'] !== 'none')): ?>
-                                <div>
-                                    <h4 class="font-semibold mb-2 text-orange-600">Return & Refund Info</h4>
-                                    <div class="space-y-2 text-sm bg-orange-50 p-4 rounded-lg">
-                                        <?php if (!empty($order['return_reason'])): ?>
-                                        <div><span class="font-medium">Return Reason:</span> <?= htmlspecialchars($order['return_reason']) ?></div>
-                                        <?php endif; ?>
-                                        <div><span class="font-medium">Refund Status:</span> 
-                                            <span class="ml-2 px-2 py-1 text-xs rounded-full <?= getRefundStatusInfo($order['refund_status'] ?? 'none')['class'] ?>">
-                                                <?= getRefundStatusInfo($order['refund_status'] ?? 'none')['label'] ?>
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <?php endif; ?>
-                            </div>
-
-                            <!-- Products -->
-                            <div class="mb-6">
-                                <h4 class="font-semibold mb-3">Products</h4>
-                                <div class="overflow-x-auto">
-                                    <table class="min-w-full border border-gray-200 rounded-lg">
-                                        <thead class="bg-gray-50">
-                                            <tr>
-                                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Product</th>
-                                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Quantity</th>
-                                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Price</th>
-                                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Subtotal</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody class="divide-y divide-gray-200">
-                                            <?php foreach ($order['products'] as $product): ?>
-                                            <tr>
-                                                <td class="px-4 py-2"><?= htmlspecialchars($product['name']) ?></td>
-                                                <td class="px-4 py-2"><?= $product['quantity'] ?></td>
-                                                <td class="px-4 py-2">₱<?= number_format($product['price'], 2) ?></td>
-                                                <td class="px-4 py-2">₱<?= number_format($product['price'] * $product['quantity'], 2) ?></td>
-                                            </tr>
-                                            <?php endforeach; ?>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-
-                            <!-- Action Buttons - Only for Refund Processing -->
-                            <div class="flex flex-wrap gap-3 pt-4 border-t">
-                                <?php if ($order['refund_status'] === 'pending'): ?>
-                                    <!-- Pending refund actions -->
-                                    <form method="POST" class="inline">
-                                        <input type="hidden" name="order_id" value="<?= $order['order_id'] ?>">
-                                        <input type="hidden" name="action" value="approve_return">
-                                        <button type="submit" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm">
-                                            <i class="bi bi-check-circle"></i> Approve Refund
-                                        </button>
-                                    </form>
-
-                                    <button onclick="openRejectModal('rejectModal<?= $order['order_id'] ?>')" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm">
-                                        <i class="bi bi-x-circle"></i> Reject Refund
-                                    </button>
-                                    
-                                <?php elseif ($order['status'] === 'delivered' && empty($order['return_reason'])): ?>
-                                    <!-- Allow manual return processing for delivered orders -->
-                                    <button onclick="openReturnModal('returnModal<?= $order['order_id'] ?>')" class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded text-sm">
-                                        <i class="bi bi-arrow-return-left"></i> Process Return Request
-                                    </button>
-                                    
-                                <?php else: ?>
-                                    <!-- No actions available -->
-                                    <div class="bg-gray-100 text-gray-600 px-4 py-2 rounded text-sm">
-                                        <i class="bi bi-info-circle"></i> 
-                                        <?php if ($order['status'] === 'canceled'): ?>
-                                            Order has been canceled - no further actions available
-                                        <?php elseif ($order['refund_status'] === 'approved'): ?>
-                                            Refund has been approved
-                                        <?php elseif ($order['refund_status'] === 'rejected'): ?>
-                                            Refund has been rejected
-                                        <?php else: ?>
-                                            No actions available for this order
-                                        <?php endif; ?>
-                                    </div>
-                                <?php endif; ?>
-
-                                <button onclick="closeModal('orderModal<?= $order['order_id'] ?>')" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm ml-auto">
-                                    <i class="bi bi-x"></i> Close
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Return Request Modal -->
-                <div id="returnModal<?= $order['order_id'] ?>" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
-                    <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-                        <div class="flex justify-between items-center mb-4">
-                            <h3 class="text-lg font-semibold text-orange-600">Process Return Request</h3>
-                            <button onclick="closeReturnModal('returnModal<?= $order['order_id'] ?>')" class="text-gray-400 hover:text-gray-600">
-                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                                </svg>
-                            </button>
-                        </div>
-
-                        <form method="POST">
-                            <input type="hidden" name="order_id" value="<?= $order['order_id'] ?>">
-                            <input type="hidden" name="action" value="process_return">
-                            
-                            <div class="mb-4">
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Return reason from customer:</label>
-                                <select name="return_reason" required class="form-select w-full">
-                                    <option value="">-- Select return reason --</option>
-                                    <option value="Defective product">Defective product</option>
-                                    <option value="Wrong item received">Wrong item received</option>
-                                    <option value="Damaged during shipping">Damaged during shipping</option>
-                                    <option value="Not as described">Not as described</option>
-                                    <option value="Size/fit issues">Size/fit issues</option>
-                                    <option value="Customer changed mind">Customer changed mind</option>
-                                    <option value="Quality not satisfactory">Quality not satisfactory</option>
-                                    <option value="Other">Other</option>
-                                </select>
-                            </div>
-
-                            <div class="mb-4 p-3 bg-yellow-50 rounded border">
-                                <p class="text-sm text-yellow-700">
-                                    <i class="bi bi-info-circle"></i>
-                                    This will mark the return as pending and require your approval for refund processing.
-                                </p>
-                            </div>
-
-                            <div class="flex gap-2 justify-end">
-                                <button type="button" onclick="closeReturnModal('returnModal<?= $order['order_id'] ?>')" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm">
-                                    Cancel
-                                </button>
-                                <button type="submit" class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded text-sm">
-                                    Process Return
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-
-                <!-- Reject Refund Modal -->
-                <div id="rejectModal<?= $order['order_id'] ?>" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
-                    <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-                        <div class="flex justify-between items-center mb-4">
-                            <h3 class="text-lg font-semibold text-red-600">Reject Refund Request</h3>
-                            <button onclick="closeRejectModal('rejectModal<?= $order['order_id'] ?>')" class="text-gray-400 hover:text-gray-600">
-                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                                </svg>
-                            </button>
-                        </div>
-
-                        <form method="POST">
-                            <input type="hidden" name="order_id" value="<?= $order['order_id'] ?>">
-                            <input type="hidden" name="action" value="reject_return">
-                            
-                            <div class="mb-4">
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Rejection reason:</label>
-                                <select name="rejection_reason" required class="form-select w-full">
-                                    <option value="">-- Select rejection reason --</option>
-                                    <option value="Item not eligible for return">Item not eligible for return</option>
-                                    <option value="Return period expired">Return period expired</option>
-                                    <option value="Item condition not acceptable">Item condition not acceptable</option>
-                                    <option value="Missing original packaging">Missing original packaging</option>
-                                    <option value="Item was used/damaged by customer">Item was used/damaged by customer</option>
-                                    <option value="Insufficient documentation/proof">Insufficient documentation/proof</option>
-                                    <option value="Return shipping not arranged">Return shipping not arranged</option>
-                                    <option value="Other">Other</option>
-                                </select>
-                            </div>
-
-                            <div class="mb-4 p-3 bg-red-50 rounded border">
-                                <p class="text-sm text-red-700">
-                                    <i class="bi bi-exclamation-triangle"></i>
-                                    This will permanently reject the refund request. Make sure to communicate the reason to the customer.
-                                </p>
-                            </div>
-
-                            <div class="flex gap-2 justify-end">
-                                <button type="button" onclick="closeRejectModal('rejectModal<?= $order['order_id'] ?>')" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm">
-                                    Cancel
-                                </button>
-                                <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm">
-                                    Confirm Rejection
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-                <?php endforeach; ?>
-
-            <?php endif; ?>
+                <?php endif; ?>
+            </div>
         </div>
-    </main>
+    </div>
+
+    <!-- Refund Detail Modals -->
+    <?php foreach($orders as $order): ?>
+    <div id="modal<?= $order['id'] ?>" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
+        <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b border-gray-200">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-lg font-medium text-gray-900">
+                        Refund Details - Order #<?= $order['id'] ?>
+                    </h3>
+                    <button onclick="closeModal('modal<?= $order['id'] ?>')" 
+                            class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Modal Body -->
+            <div class="px-6 py-4 space-y-6">
+                <!-- Status & Date -->
+                <div class="flex items-center justify-between">
+                    <?php 
+                    $status = $order['refund_status'] ?? 'requested';
+                    $statusClasses = [
+                        'requested' => 'bg-yellow-100 text-yellow-800',
+                        'approved' => 'bg-blue-100 text-blue-800',
+                        'processing' => 'bg-orange-100 text-orange-800',
+                        'completed' => 'bg-green-100 text-green-800',
+                      
+                        'rejected' => 'bg-red-100 text-red-800'
+                    ];
+                    ?>
+                    <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full <?= $statusClasses[$status] ?? 'bg-gray-100 text-gray-800' ?>">
+                        <?= ucfirst($status) ?>
+                    </span>
+                    <div class="text-sm text-gray-500">
+                        Requested: <?= $order['refund_requested_date'] ? date('M d, Y H:i', strtotime($order['refund_requested_date'])) : 'N/A' ?>
+                    </div>
+                </div>
+
+                <!-- Customer Information -->
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <h4 class="font-medium text-gray-900 mb-3">Customer Information</h4>
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <span class="text-gray-600">Name:</span>
+                            <span class="ml-2 text-gray-900"><?= htmlspecialchars($order['customer_name'] ?: 'Customer #'.$order['customer_id']) ?></span>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Email:</span>
+                            <span class="ml-2 text-gray-900"><?= htmlspecialchars($order['customer_email'] ?: 'N/A') ?></span>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Phone:</span>
+                            <span class="ml-2 text-gray-900"><?= htmlspecialchars($order['customer_phone'] ?: 'N/A') ?></span>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Customer ID:</span>
+                            <span class="ml-2 text-gray-900">#<?= $order['customer_id'] ?></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Order Items -->
+                <div>
+                    <h4 class="font-medium text-gray-900 mb-3">Order Items</h4>
+                    <div class="border rounded-lg overflow-hidden">
+                        <table class="w-full">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Qty</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Subtotal</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+                            <?php 
+                            $totalAmount = 0;
+                            foreach($order['products'] as $p): 
+                                $subtotal = $p['price'] * $p['quantity'];
+                                $totalAmount += $subtotal;
+                            ?>
+                                <tr>
+                                    <td class="px-4 py-3 text-sm text-gray-900"><?= htmlspecialchars($p['name']) ?></td>
+                                    <td class="px-4 py-3 text-sm text-gray-900"><?= $p['quantity'] ?></td>
+                                    <td class="px-4 py-3 text-sm text-gray-900">₱<?= number_format($p['price'], 2) ?></td>
+                                    <td class="px-4 py-3 text-sm font-medium text-gray-900">₱<?= number_format($subtotal, 2) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                            <tfoot class="bg-gray-50">
+                                <tr>
+                                    <td colspan="3" class="px-4 py-3 text-sm font-medium text-gray-900 text-right">Total:</td>
+                                    <td class="px-4 py-3 text-sm font-bold text-gray-900">₱<?= number_format($totalAmount, 2) ?></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Refund Information -->
+                <div class="bg-blue-50 rounded-lg p-4">
+                    <h4 class="font-medium text-gray-900 mb-3">Refund Information</h4>
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <span class="text-gray-600">Refund Amount:</span>
+                            <span class="ml-2 text-lg font-bold text-green-600">₱<?= number_format($order['refund_amount'] ?? $totalAmount, 2) ?></span>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Refund Method:</span>
+                            <span class="ml-2 text-gray-900"><?= htmlspecialchars($order['refund_method'] ?: 'Same as payment method') ?></span>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Payment Method:</span>
+                            <span class="ml-2 text-gray-900"><?= htmlspecialchars($order['payment_method'] ?: 'N/A') ?></span>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Reference #:</span>
+                            <span class="ml-2 text-gray-900"><?= htmlspecialchars($order['refund_reference'] ?: 'Not generated') ?></span>
+                        </div>
+                    </div>
+                    
+                    <?php if($order['refund_reason']): ?>
+                    <div class="mt-4">
+                        <span class="font-medium text-gray-600">Refund Reason:</span>
+                        <div class="mt-2 p-3 bg-white rounded border text-gray-900">
+                            <?= nl2br(htmlspecialchars($order['refund_reason'])) ?>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+
+                <!-- NEW: Rejection Information (if rejected) -->
+                <?php if($order['refund_status'] === 'rejected'): ?>
+                <div class="bg-red-50 rounded-lg p-4">
+                    <h4 class="font-medium text-red-900 mb-3">
+                        <i class="fas fa-times-circle mr-2"></i>Rejection Details
+                    </h4>
+                    <div class="space-y-3">
+                        <?php if($order['rejection_date']): ?>
+                        <div class="text-sm">
+                            <span class="text-red-600 font-medium">Rejected on:</span>
+                            <span class="ml-2 text-red-900"><?= date('M d, Y H:i', strtotime($order['rejection_date'])) ?></span>
+                        </div>
+                        <?php endif; ?>
+                        
+                        <?php if($order['rejection_reason']): ?>
+                        <div>
+                            <span class="font-medium text-red-600">Rejection Reason:</span>
+                            <div class="mt-2 p-3 bg-white rounded border border-red-200 text-red-900">
+                                <?= nl2br(htmlspecialchars($order['rejection_reason'])) ?>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
+            </div>
+            
+            <!-- Modal Footer with Actions -->
+            <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 rounded-b-lg">
+                <div class="flex justify-end space-x-3">
+                    <?php $currentStatus = $order['refund_status'] ?? 'requested'; ?>
+                    
+                    <?php if($currentStatus === 'requested'): ?>
+                    <form method="post" class="inline">
+                        <input type="hidden" name="order_id" value="<?= $order['id'] ?>">
+                        <input type="hidden" name="action" value="approve">
+                        <button type="submit" 
+                                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                                onclick="return confirm('Approve this refund request?')">
+                            <i class="fas fa-check mr-1"></i>
+                            Approve
+                        </button>
+                    </form>
+                    
+                    <!-- NEW: Reject button with modal -->
+                    <button onclick="openRejectModal(<?= $order['id'] ?>)"
+                            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                        <i class="fas fa-times mr-1"></i>
+                        Reject
+                    </button>
+                    
+                    <?php elseif($currentStatus === 'approved'): ?>
+                    <form method="post" class="inline">
+                        <input type="hidden" name="order_id" value="<?= $order['id'] ?>">
+                        <input type="hidden" name="action" value="process">
+                        <button type="submit" 
+                                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
+                                onclick="return confirm('Start processing this refund?')">
+                            <i class="fas fa-cog mr-1"></i>
+                            Start Processing
+                        </button>
+                    </form>
+                    
+                    <?php elseif($currentStatus === 'processing'): ?>
+                    <form method="post" class="inline">
+                        <input type="hidden" name="order_id" value="<?= $order['id'] ?>">
+                        <input type="hidden" name="action" value="complete">
+                        <button type="submit" 
+                                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                                onclick="return confirm('Mark this refund as completed?')">
+                            <i class="fas fa-check-circle mr-1"></i>
+                            Mark Complete
+                        </button>
+                    </form>
+                    <?php endif; ?>
+                    
+                  
+                   
+                    
+                    <button onclick="closeModal('modal<?= $order['id'] ?>')" 
+                            class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php endforeach; ?>
+
+    <!-- NEW: Rejection Modal -->
+    <div id="rejectModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-[70] p-4">
+        <div class="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="text-lg font-medium text-gray-900">Reject Refund Request</h3>
+            </div>
+            <form id="rejectForm" method="post">
+                <div class="px-6 py-4">
+                    <input type="hidden" name="order_id" id="rejectOrderId">
+                    <input type="hidden" name="action" value="reject">
+                    
+                    <label for="rejection_reason" class="block text-sm font-medium text-gray-700 mb-2">
+                        Rejection Reason <span class="text-red-500">*</span>
+                    </label>
+                    <textarea name="rejection_reason" 
+                              id="rejection_reason" 
+                              rows="4" 
+                              required
+                              placeholder="Please explain why this refund request is being rejected..."
+                              class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"></textarea>
+                    <p class="mt-2 text-sm text-gray-500">This reason will be visible to the customer.</p>
+                </div>
+                <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 rounded-b-lg flex justify-end space-x-3">
+                    <button type="button" 
+                            onclick="closeRejectModal()"
+                            class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Cancel
+                    </button>
+                    <button type="submit" 
+                            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                            onclick="return confirm('Are you sure you want to reject this refund request?')">
+                        <i class="fas fa-times mr-1"></i>
+                        Reject Refund
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <script>
-        // Modal Functions
-        function openModal(id) {
-            document.getElementById(id).classList.remove("hidden");
+    function openModal(id) {
+        const modal = document.getElementById(id);
+        if (modal) {
+            modal.classList.remove('hidden');
             document.body.style.overflow = 'hidden';
         }
-        
-        function closeModal(id) {
-            document.getElementById(id).classList.add("hidden");
+    }
+
+    function closeModal(id) {
+        const modal = document.getElementById(id);
+        if (modal) {
+            modal.classList.add('hidden');
             document.body.style.overflow = '';
         }
+    }
 
-        function openReturnModal(id) {
-            document.getElementById(id).classList.remove("hidden");
-            document.body.style.overflow = 'hidden';
-        }
+    // NEW: Reject modal functions
+    function openRejectModal(orderId) {
+        // Close any open order modals first
+        const openOrderModals = document.querySelectorAll('[id^="modal"]:not(.hidden)');
+        openOrderModals.forEach(modal => {
+            modal.classList.add('hidden');
+        });
         
-        function closeReturnModal(id) {
-            document.getElementById(id).classList.add("hidden");
-            document.body.style.overflow = '';
-        }
+        document.getElementById('rejectOrderId').value = orderId;
+        document.getElementById('rejection_reason').value = '';
+        document.getElementById('rejectModal').classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+    }
 
-        function openRejectModal(id) {
-            document.getElementById(id).classList.remove("hidden");
-            document.body.style.overflow = 'hidden';
-        }
-        
-        function closeRejectModal(id) {
-            document.getElementById(id).classList.add("hidden");
-            document.body.style.overflow = '';
-        }
+    function closeRejectModal() {
+        document.getElementById('rejectModal').classList.add('hidden');
+        // Don't reset body overflow here in case we want to go back to the order modal
+    }
 
-        // Close modals when clicking outside
-        window.onclick = function(event) {
-            if (event.target.classList.contains('bg-opacity-50')) {
-                event.target.classList.add('hidden');
+    // Close modal on escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            const visibleModals = document.querySelectorAll('[id^="modal"]:not(.hidden), #rejectModal:not(.hidden)');
+            visibleModals.forEach(modal => {
+                modal.classList.add('hidden');
                 document.body.style.overflow = '';
-            }
-        }
-
-        // Close modals with Escape key
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                const modals = document.querySelectorAll('[id$="Modal"]');
-                modals.forEach(modal => {
-                    if (!modal.classList.contains('hidden')) {
-                        modal.classList.add('hidden');
-                        document.body.style.overflow = '';
-                    }
-                });
-            }
-        });
-
-        // Form validations and confirmations
-        document.addEventListener('DOMContentLoaded', function() {
-            // Return processing confirmation
-            document.querySelectorAll('form').forEach(form => {
-                if (form.querySelector('input[name="action"][value="process_return"]')) {
-                    form.addEventListener('submit', function(e) {
-                        const reason = this.querySelector('select[name="return_reason"]').value;
-                        if (!reason) {
-                            e.preventDefault();
-                            alert('Please select a return reason.');
-                            return false;
-                        }
-                        
-                        const confirmation = confirm('Process this return request? This will set refund status to pending.');
-                        if (!confirmation) {
-                            e.preventDefault();
-                            return false;
-                        }
-                    });
-                }
-
-                // Refund approval confirmation
-                if (form.querySelector('input[name="action"][value="approve_return"]')) {
-                    form.addEventListener('submit', function(e) {
-                        const confirmation = confirm('Approve this refund? The order will be marked as returned and refund approved.');
-                        if (!confirmation) {
-                            e.preventDefault();
-                            return false;
-                        }
-                    });
-                }
-
-                // Refund rejection confirmation
-                if (form.querySelector('input[name="action"][value="reject_return"]')) {
-                    form.addEventListener('submit', function(e) {
-                        const reason = this.querySelector('select[name="rejection_reason"]').value;
-                        if (!reason) {
-                            e.preventDefault();
-                            alert('Please select a rejection reason.');
-                            return false;
-                        }
-                        
-                        const confirmation = confirm('Reject this refund request? This action cannot be undone.');
-                        if (!confirmation) {
-                            e.preventDefault();
-                            return false;
-                        }
-                    });
-                }
             });
-        });
+        }
+    });
 
-        // Auto-hide success message
-        setTimeout(function() {
-            const successMsg = document.querySelector('.bg-green-100');
-            if (successMsg) {
-                successMsg.style.display = 'none';
-            }
-        }, 5000);
+    // Close modal on backdrop click
+    document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('bg-gray-600') && e.target.classList.contains('bg-opacity-50')) {
+            e.target.classList.add('hidden');
+            document.body.style.overflow = '';
+        }
+    });
     </script>
 
-    <!-- Database Schema Information -->
-    <!--
-    Your current database schema is perfect! The system works with:
-
-    orders table columns:
-    - id (primary key)
-    - user_id (customer ID)
-    - seller_id (your seller ID)
-    - total_amount (order total)
-    - status (pending, approved, shipped, delivered, canceled, returned)
-    - created_at (order creation time)
-    - cancel_reason (cancellation reason - can be NULL)
-    - return_reason (return reason - can be NULL)
-    - refund_status (none, pending, approved, rejected, processed)
-
-    No additional tables needed! The system uses your existing schema.
-    -->
 </body>
 </html>
